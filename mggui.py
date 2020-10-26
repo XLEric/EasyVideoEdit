@@ -3,7 +3,7 @@ import tkinter
 from time import sleep
 import time
 from itertools import count
-import pyaudio
+# import pyaudio
 from moviepy.editor import *
 from threading import Thread
 from multiprocessing import Pool
@@ -28,6 +28,8 @@ global_play = False
 
 global_start_time = 0.
 global_end_time = 0.
+
+global_seg_idx = 0
 
 lbVideo = tkinter.Label(root,bg = 'white')
 lbVideo.pack(fill = tkinter.BOTH, expand = tkinter.YES)
@@ -106,23 +108,23 @@ def play_video(video,frame_count):
         #     pass
     et = time.time()
     print('video cost time : ',(et-st))
-
-def play_audio(audio):
-    p = pyaudio.PyAudio()
-
-    stream = p.open(format = pyaudio.paFloat32,
-                    channels=2,
-                    rate=44100,
-                    output=True)
-    idx = 0
-    st = time.time()
-    for chunk in audio.iter_frames():
-        if not isplaying:
-            break
-        stream.write(chunk.astype('float32').tostring())
-    et = time.time()
-    print('audio cost time : ',(et-st))
-    p.terminate()
+#
+# def play_audio(audio):
+#     p = pyaudio.PyAudio()
+#
+#     stream = p.open(format = pyaudio.paFloat32,
+#                     channels=2,
+#                     rate=44100,
+#                     output=True)
+#     idx = 0
+#     st = time.time()
+#     for chunk in audio.iter_frames():
+#         if not isplaying:
+#             break
+#         stream.write(chunk.astype('float32').tostring())
+#     et = time.time()
+#     print('audio cost time : ',(et-st))
+#     p.terminate()
 
 
 def video_param(video):
@@ -217,7 +219,7 @@ def opencv_sync(path_):
     h = root.winfo_height()
 
     ratio = min(w/vw,h,vh)
-    size = (int(vw*ratio),int(vh*ratio))
+    size = (int(vw*ratio/2.),int(vh*ratio/2.))
     #
     dict_ =video_param(video_)
     print_video_param(dict_)
@@ -539,20 +541,43 @@ def opencv_video(path,m_):
 
 def save_clips(path_):
     global global_image_start_time,global_image_end_time
-
+    global global_image_start_id
+    global global_image_end_id
+    global global_seg_idx
     movie = VideoFileClip(path_)
 
+    path_make = './video_make/'
+    if not os.path.exists(path_make):
+        os.mkdir(path_make)
+    doc_ = path_.split('/')[-1].strip('.mp4').strip('.MP4')+'/'
+    if not os.path.exists(path_make+doc_):
+        os.mkdir(path_make+doc_)
+    save_idx = 0
     while True:
         time.sleep(0.05)
         if not isplaying:
             break
         if global_play:
+            save_idx = global_seg_idx
+            #-------
+            m_dict = {
+                'start_frame':global_image_start_id,
+                's_time':global_image_start_time,
+
+                'end_frame':global_image_end_id,
+                'e_time':global_image_end_time,
+                }
+
+            f = open(path_make+doc_ + "clip_{}.json".format(save_idx),"w")
+            json.dump(m_dict,f,indent = 1)
+            f.close()
+            #-------
             root.title(f'开始剪辑...')
             str_time = global_image_start_time/1000.
             end_time = global_image_end_time/1000.
 
             movie_clip = movie.subclip(str_time, end_time)# 将剪切的片段保存
-            movie_clip.write_videofile("clip.mp4")
+            movie_clip.write_videofile(path_make+doc_ + "clip_{}.mp4".format(save_idx))
             root.title(f'剪辑完成...')
             time.sleep(1.)
             root.title(f'正在播放')
@@ -563,6 +588,7 @@ def choose_segment(path,cfg):
     global global_image_start_time,global_image_end_time
     global flag_choose_segment
     global global_play
+    global global_seg_idx
 
     video = cv2.VideoCapture(path)
 
@@ -615,6 +641,7 @@ def choose_segment(path,cfg):
 
             if key_ == ord('a') or key_ == ord('A') and global_play == False:#
                 print('check image start end time [ {:.4} ~ {:.4} ]'.format(global_image_start_time/1000.,global_image_end_time/1000.))
+                global_seg_idx = seg_idx
                 global_play = True
 
             if (key_ == ord('d') or key_ == ord('D')) and len_>0:
@@ -654,9 +681,12 @@ def open_video():
     global global_image_start_id
     global s_step
     global flag_choose_segment
+    global global_seg_idx
+
+    global_seg_idx = 0
 
     flag_choose_segment = False
-    s_step = 3
+    s_step = 2
 
     global_image_start_id = 0
     r_ = False
@@ -665,7 +695,6 @@ def open_video():
     fn  = askopenfilename(title = "打开视频文件",
                             filetypes = [('视频','*.mp4 *.avi')])
 
-
     if fn:
 
         try:
@@ -673,7 +702,7 @@ def open_video():
         except:
             pass
 
-        path_json = fn.split('/')[-1].replace('.mp4','.json').replace('.MP4','.json')
+        path_json = './video_ana/'+fn.split('/')[-1].replace('.mp4','.json').replace('.MP4','.json')
         dict_seg = {}
         dict_seg['data'] = []
         if os.access(path_json,os.F_OK):# checkpoint
